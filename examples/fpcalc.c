@@ -31,7 +31,7 @@
 // for beefed up -version and new -md5 features
 
 #include <config.h>
-#include <libavutil/ffversion.h>
+#include <version.h>
 #define stringize2(aaa)  #aaa
 #define stringize(aaa) stringize2(aaa)
 
@@ -435,7 +435,7 @@ int fpcalc_main(int argc, char **argv)
 				continue;
 			}
 			printf(with_fingerprint_ints?"FINGERPRINT_INTS=":"FINGERPRINT=");
-			for (j = 0; j < raw_fingerprint_size; j++) {
+            for (j = 0; j < raw_fingerprint_size; j++) {
 				printf("%d%s", raw_fingerprint[j], j + 1 < raw_fingerprint_size ? "," : "");
 			}
 			printf("\n");
