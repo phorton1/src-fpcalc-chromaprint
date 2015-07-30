@@ -12,7 +12,7 @@
 # (c) Copyright 2015 - Patrick Horton
 
 
-FFMPEG_VERSION=multi-tip
+FFMPEG_VERSION=2.7
     # This is explicity set by the branch checkout
 
 START_DIR=$PWD
