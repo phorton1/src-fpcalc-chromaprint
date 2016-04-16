@@ -72,7 +72,17 @@ int64_t get_default_channel_layout(int nb_channels)
 #endif
 }
 
-int decode_audio_file(ChromaprintContext *chromaprint_ctx, const char *file_name, int max_length, int *duration, int with_stream_md5)
+
+#define DEBUG_DUMP_STREAM 0
+
+
+int decode_audio_file(
+	ChromaprintContext *chromaprint_ctx,
+	const char *file_name,
+	int max_length,
+	int *duration,
+	int with_stream_md5,
+	const char *dumpstream_filename)
 {
 	int ok = 0, remaining, length, consumed, codec_ctx_opened = 0, got_frame, stream_index;
 	AVFormatContext *format_ctx = NULL;
@@ -91,6 +101,14 @@ int decode_audio_file(ChromaprintContext *chromaprint_ctx, const char *file_name
 	uint8_t *dst_data[1] = { NULL };
 	uint8_t **data;
 	AVPacket packet;
+
+	FILE *dump_stream = NULL;
+	
+#if DEBUG_DUMP_STREAM
+	int num_dumped = 0;
+	int total_bytes_written = 0;
+#endif
+
 
 	struct AVMD5 *stream_md5_ctx = av_malloc(av_md5_size);
 	av_md5_init(stream_md5_ctx);
@@ -172,6 +190,7 @@ int decode_audio_file(ChromaprintContext *chromaprint_ctx, const char *file_name
 	}
 
 	if (stream->duration != AV_NOPTS_VALUE) {
+		
 		*duration = stream->time_base.num * stream->duration / stream->time_base.den;
 	}
 	else if (format_ctx->duration != AV_NOPTS_VALUE) {
@@ -186,6 +205,16 @@ int decode_audio_file(ChromaprintContext *chromaprint_ctx, const char *file_name
 	chromaprint_start(chromaprint_ctx, codec_ctx->sample_rate, codec_ctx->channels);
 
 	frame = avcodec_alloc_frame();
+	
+	// prh 2016-04-13 .. dump the stream to a file for debugging
+	if (with_stream_md5 && dumpstream_filename != NULL)
+	{
+		dump_stream = fopen(dumpstream_filename,"wb");
+		if (dump_stream == NULL)
+		{
+			fprintf(stderr,"WARNING: Could not open dumping stream file '%s'\n",dumpstream_filename);
+		}
+	}
 
 	while (1) {
 		if (av_read_frame(format_ctx, &packet) < 0) {
@@ -205,7 +234,26 @@ int decode_audio_file(ChromaprintContext *chromaprint_ctx, const char *file_name
 			if (got_frame) {
 
 				if (with_stream_md5)
+				{
+					if (dump_stream != NULL)
+					{
+						int bytes_written;
+
+						#if DEBUG_DUMP_STREAM
+							fprintf(stderr,"buf(%d) len=%d offset=%d\n", num_dumped, packet.size, total_bytes_written);
+							total_bytes_written += packet.size;
+							num_dumped++;
+						#endif
+						
+						bytes_written = fwrite(packet.data, 1, packet.size, dump_stream);
+						if (bytes_written != packet.size)
+						{
+							fprintf(stderr, "WARNING: could not write dump_stream\n");
+						}
+					}
+					
 					av_md5_update(stream_md5_ctx, packet.data, packet.size);
+				}
 
 				// continue getting packets, but do not continue
 				// converting and fingerprinting if there's no more "remaining",
@@ -259,6 +307,11 @@ int decode_audio_file(ChromaprintContext *chromaprint_ctx, const char *file_name
 	}
 
 finish:
+	if (dump_stream != NULL)
+	{
+		fclose(dump_stream);
+		dump_stream = NULL;
+	}
 	if (!chromaprint_finish(chromaprint_ctx)) {
 		fprintf(stderr, "ERROR: fingerprint calculation failed\n");
 		goto done;
@@ -311,6 +364,8 @@ int fpcalc_main(int argc, char **argv)
 	int with_fingerprint_md5 = 0;
 	int with_fingerprint_ints = 0;
 	int av_log_level = AV_LOG_ERROR;
+	char *dumpstream_filename = NULL;
+	
 
 	file_names = malloc(argc * sizeof(char *));
 	for (i = 1; i < argc; i++) {
@@ -371,6 +426,10 @@ int fpcalc_main(int argc, char **argv)
 		{
 			av_log_level = atoi(argv[++i]);
 		}
+		else if (!strcmp(arg, "-dump_stream") && i + 1 < argc)
+		{
+			dumpstream_filename = argv[++i];
+		}
 
 		else if (!strcmp(arg, "-set") && i + 1 < argc) {
 			i += 1;
@@ -393,6 +452,7 @@ int fpcalc_main(int argc, char **argv)
 		printf("  -stream_md5   calculate the md5 hash of the entire stream, which should agree across platforms for the same audio file\n");
 		printf("  -ints         same output as RAW but called FINGERPRINT_INTS in addition to the text fingerprint\n");
 		printf("  -av_log NUM   set the av_log_level (default=AV_LOG_ERROR=16)\n");
+		printf("  -dump_stream  [filename]  when calculating stream_md5, dump the stream used for the MD5 to the given file\n");
 		printf("\n");
 		printf("  -set silence_threshold=THRESHOLD\n");
 		printf("\n");
@@ -418,7 +478,7 @@ int fpcalc_main(int argc, char **argv)
 
 	for (i = 0; i < num_file_names; i++) {
 		file_name = file_names[i];
-		if (!decode_audio_file(chromaprint_ctx, file_name, max_length, &duration, with_stream_md5)) {
+		if (!decode_audio_file(chromaprint_ctx, file_name, max_length, &duration, with_stream_md5, dumpstream_filename)) {
 			fprintf(stderr, "ERROR: unable to calculate fingerprint for file %s, skipping\n", file_name);
 			num_failed++;
 			continue;
