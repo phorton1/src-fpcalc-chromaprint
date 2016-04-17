@@ -53,7 +53,7 @@ JNI_LOGGING=1
     # set this to non-blank 1 to include android -llog and
     # to build a version that logs details about the call
     # to JNI_OnLoad().  Set to nothing (<cr>) to turn it off.
-
+    
 #------------------------------------------------
 # configure one
 #------------------------------------------------
@@ -93,6 +93,12 @@ function configure_one
 
         EXESUF=".exe"
         test "$HOST_PREFIX" == "_linux" && TOOLCHAIN="i586-mingw32msvc-"
+
+        # -lws2_32 is for linking to ffmpeg with http protocol
+        # is not currently needed as I only encode WMA on x86
+        #
+        # LDLIBS="$LDLIBS -lws2_32"
+        
 
     else    # !win == android
 
